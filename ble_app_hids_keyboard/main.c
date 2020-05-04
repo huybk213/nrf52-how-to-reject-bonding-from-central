@@ -88,10 +88,17 @@
 #include "nrf_log_ctrl.h"
 #include "nrf_log_default_backends.h"
 
+// #define ERASE_BONDING_BUTTON BSP_BUTTON_0
+// #define KEYBOARD_TEST_BUTTON BSP_BUTTON_1
+// #define ALLOW_BONDING_BUTTON BSP_BUTTON_2
+// #define REJECT_BONDING_BUTTON BSP_BUTTON_3
+//
+// #define BUTTON_DETECTION_DELAY APP_TIMER_TICKS(50) /**< Delay from a GPIOTE event until a button is reported as pushed (in number of timer ticks). */
+
 
 #define SHIFT_BUTTON_ID                     1                                          /**< Button used as 'SHIFT' Key. */
 
-#define DEVICE_NAME                         "Nordic_Keyboard"                          /**< Name of device. Will be included in the advertising data. */
+#define DEVICE_NAME                         "KeyboardReject"                           /**< Name of device. Will be included in the advertising data. */
 #define MANUFACTURER_NAME                   "NordicSemiconductor"                      /**< Manufacturer. Will be passed to Device Information Service. */
 
 #define APP_BLE_OBSERVER_PRIO               3                                          /**< Application's BLE observer priority. You shouldn't need to modify this value. */
@@ -164,6 +171,8 @@
 
 #define MAX_KEYS_IN_ONE_REPORT              (INPUT_REPORT_KEYS_MAX_LEN - SCAN_CODE_POS)/**< Maximum number of key presses that can be sent in one Input Report. */
 
+
+static bool m_allow_bonding = true;
 
 /**Buffer queue access macros
  *
@@ -367,8 +376,44 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
         pm_handler_on_pm_evt(p_evt);
         pm_handler_flash_clean(p_evt);
 
+        NRF_LOG_DEBUG("%s, evt_id = %02x", __func__, p_evt->evt_id);
+        ret_code_t err_code;
+
         switch (p_evt->evt_id)
         {
+
+        case PM_EVT_BONDED_PEER_CONNECTED:              /**< @brief A security procedure has started on a link, initiated either locally or remotely. The security procedure is using the last parameters provided via @ref pm_sec_params_set. This event is always followed by either a @ref PM_EVT_CONN_SEC_SUCCEEDED or a @ref PM_EVT_CONN_SEC_FAILED event. This is an informational event; no action is needed for the procedure to proceed. */
+        case PM_EVT_CONN_SEC_FAILED:                   /**< @brief A pairing or encryption procedure has failed. In some cases, this means that security is not possible on this link (temporarily or permanently). How to handle this error depends on the application. */
+        case PM_EVT_CONN_SEC_CONFIG_REQ:               /**< @brief The peer (central) has requested pairing, but a bond already exists with that peer. Reply by calling @ref pm_conn_sec_config_reply before the event handler returns. If no reply is sent, a default is used. */
+                break;
+
+        case PM_EVT_CONN_SEC_PARAMS_REQ:               /**< @brief Security parameters (@ref ble_gap_sec_params_t) are needed for an ongoing security procedure. Reply wit @ref pm_conn_sec_params_reply before the event handler returns. If no reply is sent, the parameters given in @ref pm_sec_params_set are used. If a peripheral connection, the central's sec_params will be available in the event. */
+        {
+                // pm_conn_sec_params_reply(m_conn_handle, )
+                NRF_LOG_DEBUG("PM_EVT_CONN_SEC_PARAMS_REQ");
+                if (m_allow_bonding == false)
+                {
+                        err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, p_evt->params.conn_sec_params_req.p_context);
+                        APP_ERROR_CHECK(err_code);
+                }
+        }
+        break;
+        case PM_EVT_STORAGE_FULL:                      /**< @brief There is no more room for peer data in flash storage. To solve this problem, delete data that is not needed anymore and run a garbage collection procedure in FDS. */
+        case PM_EVT_ERROR_UNEXPECTED:                  /**< @brief An unrecoverable error happened inside Peer Manager. An operation failed with the provided error. */
+        case PM_EVT_PEER_DATA_UPDATE_FAILED:           /**< @brief A piece of peer data could not be stored, updated, or cleared in flash storage. This event is sent instead of @ref PM_EVT_PEER_DATA_UPDATE_SUCCEEDED for the failed operation. */
+        case PM_EVT_PEER_DELETE_SUCCEEDED:             /**< @brief A peer was cleared from flash storage, for example because a call to @ref pm_peer_delete succeeded. This event can also be sent as part of a call to @ref pm_peers_delete or internal cleanup. */
+        case PM_EVT_PEER_DELETE_FAILED:                /**< @brief A peer could not be cleared from flash storage. This event is sent instead of @ref PM_EVT_PEER_DELETE_SUCCEEDED for the failed operation. */
+        case PM_EVT_PEERS_DELETE_FAILED:               /**< @brief A call to @ref pm_peers_delete has failed, which means that at least one of the peers could not be deleted. Other peers might have been deleted, or might still be queued to be deleted. No more @ref PM_EVT_PEERS_DELETE_SUCCEEDED or @ref PM_EVT_PEERS_DELETE_FAILED events are sent until the next time @ref pm_peers_delete is called. */
+        case PM_EVT_LOCAL_DB_CACHE_APPLIED:            /**< @brief Local database values for a peer (taken from flash storage) have been provided to the SoftDevice. */
+        case PM_EVT_LOCAL_DB_CACHE_APPLY_FAILED:       /**< @brief Local database values for a peer (taken from flash storage) were rejected by the SoftDevice, which means that either the database has changed or the user has manually set the local database to an invalid value (using @ref pm_peer_data_store). */
+        case PM_EVT_SERVICE_CHANGED_IND_SENT:          /**< @brief A service changed indication has been sent to a peer, as a result of a call to @ref pm_local_database_has_changed. This event will be followed by a @ref PM_EVT_SERVICE_CHANGED_IND_CONFIRMED event if the peer acknowledges the indication. */
+        case PM_EVT_SERVICE_CHANGED_IND_CONFIRMED:     /**< @brief A service changed indication that was sent has been confirmed by a peer. The peer can now be considered aware that the local database has changed. */
+        case PM_EVT_SLAVE_SECURITY_REQ:                /**< @brief The peer (peripheral) has requested link encryption, which has been enabled. */
+        case PM_EVT_FLASH_GARBAGE_COLLECTED:           /**< @brief The flash has been garbage collected (By FDS), possibly freeing up space. */
+        case PM_EVT_FLASH_GARBAGE_COLLECTION_FAILED:   /**< @brief Garbage collection was attempted but failed. */
+
+                break;
+
         case PM_EVT_PEERS_DELETE_SUCCEEDED:
                 advertising_start(false);
                 break;
@@ -1428,11 +1473,112 @@ static void bsp_event_handler(bsp_event_t event)
                 }
                 break;
 
+        case BSP_EVENT_KEY_3:
+                if (m_allow_bonding)
+                {
+                        m_allow_bonding = false;
+                        NRF_LOG_DEBUG("Force to reject bonding");
+                }
+                else
+                {
+                        m_allow_bonding = true;
+                        NRF_LOG_DEBUG("Allow bonding");
+                }
+
+                break;
         default:
                 break;
         }
 }
 
+// /**@brief Function for handling events from the button handler module.
+//  *
+//  * @param[in] pin_no        The pin that the event applies to.
+//  * @param[in] button_action The button action (press/release).
+//  */
+// static void button_event_handler(uint8_t pin_no, uint8_t button_action)
+// {
+//         ret_code_t err_code;
+//
+//         switch (pin_no)
+//         {
+//         case ERASE_BONDING_BUTTON:
+//                 if (button_action == APP_BUTTON_PUSH)
+//                 {
+//                         err_code = sd_ble_gap_disconnect(m_conn_handle,
+//                                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
+//                         if (err_code != NRF_ERROR_INVALID_STATE)
+//                         {
+//                                 APP_ERROR_CHECK(err_code);
+//                         }
+//                         delete_bonds();
+//                         NRF_LOG_DEBUG("Erase all the bonding information!");
+//                 }
+//                 break;
+//
+//         case KEYBOARD_TEST_BUTTON:
+//                 if (button_action == APP_BUTTON_PUSH)
+//                 {
+//                         static uint8_t * p_key = m_sample_key_press_scan_str;
+//                         static uint8_t size  = 0;
+//                         NRF_LOG_DEBUG("Press the keyboard testing!");
+//                         if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+//                         {
+//                                 keys_send(1, p_key);
+//                                 p_key++;
+//                                 size++;
+//                                 if (size == MAX_KEYS_IN_ONE_REPORT)
+//                                 {
+//                                         p_key = m_sample_key_press_scan_str;
+//                                         size  = 0;
+//                                 }
+//                         }
+//                 }
+//                 break;
+//
+//         case ALLOW_BONDING_BUTTON:
+//                 if (button_action == APP_BUTTON_PUSH)
+//                 {
+//                         m_allow_bonding = true;
+//                         NRF_LOG_DEBUG("Allow bonding");
+//                 }
+//                 break;
+//         case REJECT_BONDING_BUTTON:
+//                 if (button_action == APP_BUTTON_PUSH)
+//                 {
+//                         m_allow_bonding = false;
+//                         NRF_LOG_DEBUG("Force to reject bonding");
+//                 }
+//                 break;
+//
+//         default:
+//                 APP_ERROR_HANDLER(pin_no);
+//                 break;
+//         }
+// }
+
+// /**@brief Function for initializing the button handler module.
+//  */
+// static void buttons_init(void)
+// {
+//         ret_code_t err_code;
+//
+//         //The array must be static because a pointer to it will be saved in the button handler module.
+//         static app_button_cfg_t buttons[] =
+//         {
+//                 {ERASE_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler},
+//                 {KEYBOARD_TEST_BUTTON, false, BUTTON_PULL, button_event_handler},
+//                 {ALLOW_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler},
+//                 {REJECT_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler}
+//         };
+//
+//         err_code = app_button_init(buttons, ARRAY_SIZE(buttons),
+//                                    BUTTON_DETECTION_DELAY);
+//         APP_ERROR_CHECK(err_code);
+//
+//         err_code = app_button_enable();
+//         APP_ERROR_CHECK(err_code);
+// }
 
 /**@brief Function for the Peer Manager initialization.
  */
@@ -1571,6 +1717,7 @@ int main(void)
         log_init();
         timers_init();
         buttons_leds_init(&erase_bonds);
+        //buttons_init();
         power_management_init();
         ble_stack_init();
         scheduler_init();
@@ -1585,6 +1732,15 @@ int main(void)
 
         // Start execution.
         NRF_LOG_INFO("Device Name %s, HID Keyboard example started.", (char *)DEVICE_NAME);
+        if (m_allow_bonding)
+        {
+                NRF_LOG_INFO("Allow Bonding!");
+        }
+        else
+        {
+                NRF_LOG_INFO("Reject Bonding!");
+        }
+
         timers_start();
         advertising_start(erase_bonds);
 
