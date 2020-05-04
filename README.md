@@ -46,3 +46,10 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 ## Requirement
 * NRF52840 DK Board x 1
 * Mobile / nRF Connect Desktop
+* SDK 16.0 / S140v7.0.1
+* IDE Segger Embedded Studio
+
+## Location
+The project may need modifications to work with later versions or other boards.
+To compile it, clone the repository in the /nRF5_SDK_XX.x.0/examples/ directory.
+The application is built to be used with the official nRF5 SDK that can be downloaded from developer.nordicsemi.com
