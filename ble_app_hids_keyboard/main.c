@@ -381,12 +381,6 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 
         switch (p_evt->evt_id)
         {
-
-        case PM_EVT_BONDED_PEER_CONNECTED:              /**< @brief A security procedure has started on a link, initiated either locally or remotely. The security procedure is using the last parameters provided via @ref pm_sec_params_set. This event is always followed by either a @ref PM_EVT_CONN_SEC_SUCCEEDED or a @ref PM_EVT_CONN_SEC_FAILED event. This is an informational event; no action is needed for the procedure to proceed. */
-        case PM_EVT_CONN_SEC_FAILED:                   /**< @brief A pairing or encryption procedure has failed. In some cases, this means that security is not possible on this link (temporarily or permanently). How to handle this error depends on the application. */
-        case PM_EVT_CONN_SEC_CONFIG_REQ:               /**< @brief The peer (central) has requested pairing, but a bond already exists with that peer. Reply by calling @ref pm_conn_sec_config_reply before the event handler returns. If no reply is sent, a default is used. */
-                break;
-
         case PM_EVT_CONN_SEC_PARAMS_REQ:               /**< @brief Security parameters (@ref ble_gap_sec_params_t) are needed for an ongoing security procedure. Reply wit @ref pm_conn_sec_params_reply before the event handler returns. If no reply is sent, the parameters given in @ref pm_sec_params_set are used. If a peripheral connection, the central's sec_params will be available in the event. */
         {
                 // pm_conn_sec_params_reply(m_conn_handle, )
@@ -398,6 +392,9 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
                 }
         }
         break;
+        case PM_EVT_BONDED_PEER_CONNECTED:              /**< @brief A security procedure has started on a link, initiated either locally or remotely. The security procedure is using the last parameters provided via @ref pm_sec_params_set. This event is always followed by either a @ref PM_EVT_CONN_SEC_SUCCEEDED or a @ref PM_EVT_CONN_SEC_FAILED event. This is an informational event; no action is needed for the procedure to proceed. */
+        case PM_EVT_CONN_SEC_FAILED:                   /**< @brief A pairing or encryption procedure has failed. In some cases, this means that security is not possible on this link (temporarily or permanently). How to handle this error depends on the application. */
+        case PM_EVT_CONN_SEC_CONFIG_REQ:               /**< @brief The peer (central) has requested pairing, but a bond already exists with that peer. Reply by calling @ref pm_conn_sec_config_reply before the event handler returns. If no reply is sent, a default is used. */
         case PM_EVT_STORAGE_FULL:                      /**< @brief There is no more room for peer data in flash storage. To solve this problem, delete data that is not needed anymore and run a garbage collection procedure in FDS. */
         case PM_EVT_ERROR_UNEXPECTED:                  /**< @brief An unrecoverable error happened inside Peer Manager. An operation failed with the provided error. */
         case PM_EVT_PEER_DATA_UPDATE_FAILED:           /**< @brief A piece of peer data could not be stored, updated, or cleared in flash storage. This event is sent instead of @ref PM_EVT_PEER_DATA_UPDATE_SUCCEEDED for the failed operation. */
