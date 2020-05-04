@@ -49,6 +49,9 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 * SDK 16.0 / S140v7.0.1
 * IDE Segger Embedded Studio
 
+## Details
+You can find all the details information at [URL](https://jimmywongiot.com/2020/05/04/how-to-allow-reject-the-ble-bonding-request-from-central/).
+
 ## Location
 The project may need modifications to work with later versions or other boards.
 To compile it, clone the repository in the /nRF5_SDK_XX.x.0/examples/ directory.
