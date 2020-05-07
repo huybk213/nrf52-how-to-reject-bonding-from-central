@@ -113,7 +113,7 @@ void smd_conn_sec_config_reply(uint16_t conn_handle, pm_conn_sec_config_t * p_co
  * @retval NRF_ERROR_BUSY                 No write buffer. Reattempt later.
  * @retval NRF_ERROR_INTERNAL             A fatal error occurred.
  */
-ret_code_t smd_params_reply(uint16_t                 conn_handle,
+ret_code_t smd_params_reply(uint16_t conn_handle,
                             ble_gap_sec_params_t   * p_sec_params,
                             ble_gap_lesc_p256_pk_t * p_public_key);
 
@@ -146,19 +146,14 @@ ret_code_t smd_params_reply(uint16_t                 conn_handle,
  * @retval BLE_ERROR_INVALID_CONN_HANDLE  Invalid connection handle.
  * @retval NRF_ERROR_INTERNAL             No more available peer IDs.
  */
-ret_code_t smd_link_secure(uint16_t               conn_handle,
+ret_code_t smd_link_secure(uint16_t conn_handle,
                            ble_gap_sec_params_t * p_sec_params,
-                           bool                   force_repairing);
+                           bool force_repairing);
 
 
-#if PM_SECURITY_USER_SELECTION_ENABLED
-/** @brief
-  * 
-  * Add the new function for users to confirm (accept or reject) bonding 
-  *
-  */
+
 void send_params_req_users_reply(uint16_t conn_handle, ble_gap_sec_params_t const * p_peer_params);
-#endif
+
 /** @}
  * @endcond
  */

@@ -172,7 +172,6 @@
 #define MAX_KEYS_IN_ONE_REPORT              (INPUT_REPORT_KEYS_MAX_LEN - SCAN_CODE_POS)/**< Maximum number of key presses that can be sent in one Input Report. */
 
 
-static bool m_allow_bonding = true;
 
 /**Buffer queue access macros
  *
@@ -226,6 +225,7 @@ STATIC_ASSERT(sizeof(buffer_list_t) % 4 == 0);
 
 
 APP_TIMER_DEF(m_battery_timer_id);                                  /**< Battery timer. */
+
 BLE_HIDS_DEF(m_hids,                                                /**< Structure used to identify the HID service. */
              NRF_SDH_BLE_TOTAL_LINK_COUNT,
              INPUT_REPORT_KEYS_MAX_LEN,
@@ -275,8 +275,6 @@ static uint8_t m_caps_off_key_scan_str[] = /**< Key pattern to be sent when the 
         0x12,   /* Key o */
         0x09,   /* Key f */
 };
-
-
 
 static void on_hids_evt(ble_hids_t * p_hids, ble_hids_evt_t * p_evt);
 
@@ -366,17 +364,22 @@ static void advertising_start(bool erase_bonds)
         }
 }
 
+#if PM_SECURITY_USER_SELECTION_ENABLED
+
+#define BONDING_REPLY_TIMEOUT_INTERVAL         APP_TIMER_TICKS(30000)                      /**< Timer for User answering bonding Accept or Reject (interval (ticks)). */
+APP_TIMER_DEF(m_bonding_reply_timer_id);                                                   /**< Battery timer. */
+static bool m_bonding_reply_timer_is_running;
+
 // The context type that is used in PM_EVT_CONN_SEC_PARAMS_REQ events and in calls to sm_sec_params_reply().
 typedef struct
 {
-    ble_gap_sec_params_t * p_sec_params;         //!< The security parameters to use in the call to the security_dispatcher
-    ble_gap_sec_params_t   sec_params_mem;       //!< The buffer for holding the security parameters.
-    bool                   params_reply_called;  //!< Whether @ref sm_sec_params_reply has been called for this context instance.
+        ble_gap_sec_params_t * p_sec_params;     //!< The security parameters to use in the call to the security_dispatcher
+        ble_gap_sec_params_t sec_params_mem;     //!< The buffer for holding the security parameters.
+        bool params_reply_called;                //!< Whether @ref sm_sec_params_reply has been called for this context instance.
 } local_sec_params_reply_context_t;
 
 
 static ble_gap_sec_params_t m_sec_param;                                /**< Current Peer Manager secure parameters configuration. */
-static pm_conn_sec_params_req_evt_t m_pm_conn_sec_params_req;
 static local_sec_params_reply_context_t m_sec_params_reply_context;
 
 /**@brief function local file
@@ -408,29 +411,41 @@ static ret_code_t local_pm_secure_mode_set(void)
         return err_code;
 }
 
-static ret_code_t local_ble_pair_on_pm_params_req(pm_evt_t const * p_evt)
+static void bonding_reply_timer_stop(void)
 {
-        ret_code_t err_code = NRF_SUCCESS;
-
-        NRF_LOG_DEBUG("LOCAL PM_EVT_CONN_SEC_PARAMS_REQ");
-
-        // Dynamic security parameters changes are needed only
-        // by NFC_PAIRING_MODE_GENERIC_OOB pairing mode.
-        //if (m_pairing_mode == NFC_PAIRING_MODE_GENERIC_OOB)
-        {
-                // Check if pointer to the Peer Manager event is not NULL.
-                VERIFY_PARAM_NOT_NULL(p_evt);
-
-                memset(&m_sec_params_reply_context, 0, sizeof(m_sec_params_reply_context));
-                memcpy(&m_sec_params_reply_context, p_evt->params.conn_sec_params_req.p_context, sizeof(p_evt->params.conn_sec_params_req.p_context));
-                //m_sec_params_reply_context.params_reply_called = false;
-                err_code = pm_conn_sec_params_reply(p_evt->conn_handle,
-                                                    &m_sec_param,
-                                                    &m_sec_params_reply_context);
-        }
-
-        return err_code;
+        m_bonding_reply_timer_is_running = false;
+        app_timer_stop(m_bonding_reply_timer_id);
 }
+
+static void bonding_reply_timer_start(void)
+{
+  #if PM_SECURITY_USER_SELECTION_ENABLED
+        ret_code_t err_code;
+        err_code = app_timer_start(m_bonding_reply_timer_id, BONDING_REPLY_TIMEOUT_INTERVAL, NULL);
+        APP_ERROR_CHECK(err_code);
+        m_bonding_reply_timer_is_running = true;
+  #endif
+}
+
+/**@brief Function for handling the Battery measurement timer timeout.
+ *
+ * @details This function will be called each time the battery level measurement timer expires.
+ *
+ * @param[in]   p_context   Pointer used for passing some arbitrary information (context) from the
+ *                          app_start_timer() call to the timeout handler.
+ */
+static void bonding_reply_timeout_handler(void * p_context)
+{
+        UNUSED_PARAMETER(p_context);
+        NRF_LOG_DEBUG("Timeout for USER Answer bonding request and then reject!");
+        if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
+        {
+                ret_code_t err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, &m_sec_params_reply_context);
+                APP_ERROR_CHECK(err_code);
+        }
+}
+
+#endif
 
 /**@brief Function for handling Peer Manager events.
  *
@@ -446,16 +461,19 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
 
         switch (p_evt->evt_id)
         {
+#if PM_SECURITY_USER_SELECTION_ENABLED
+        case PM_EVT_CONN_SEC_PARAMS_REQ_PENDING:
+                //Waiting for the user to answer Yes/No on bonding request
+                NRF_LOG_DEBUG("pm_evt_handler : PM_EVT_CONN_SEC_PARAMS_REQ_PENDING");
+
+                memset(&m_sec_params_reply_context, 0, sizeof(m_sec_params_reply_context));
+                memcpy(&m_sec_params_reply_context, p_evt->params.conn_sec_params_req.p_context, sizeof(p_evt->params.conn_sec_params_req.p_context));
+                bonding_reply_timer_start();
+                break;
+#endif
         case PM_EVT_CONN_SEC_PARAMS_REQ:               /**< @brief Security parameters (@ref ble_gap_sec_params_t) are needed for an ongoing security procedure. Reply wit @ref pm_conn_sec_params_reply before the event handler returns. If no reply is sent, the parameters given in @ref pm_sec_params_set are used. If a peripheral connection, the central's sec_params will be available in the event. */
         {
-                // pm_conn_sec_params_reply(m_conn_handle, )
                 NRF_LOG_DEBUG("pm_evt_handler : PM_EVT_CONN_SEC_PARAMS_REQ");
-                local_ble_pair_on_pm_params_req(p_evt);
-//                if (m_allow_bonding == false)
-//                {
-//                        err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, p_evt->params.conn_sec_params_req.p_context);
-//                        APP_ERROR_CHECK(err_code);
-//                }
         }
         break;
         case PM_EVT_BONDED_PEER_CONNECTED:              /**< @brief A security procedure has started on a link, initiated either locally or remotely. The security procedure is using the last parameters provided via @ref pm_sec_params_set. This event is always followed by either a @ref PM_EVT_CONN_SEC_SUCCEEDED or a @ref PM_EVT_CONN_SEC_FAILED event. This is an informational event; no action is needed for the procedure to proceed. */
@@ -574,6 +592,15 @@ static void timers_init(void)
                                     APP_TIMER_MODE_REPEATED,
                                     battery_level_meas_timeout_handler);
         APP_ERROR_CHECK(err_code);
+
+#if PM_SECURITY_USER_SELECTION_ENABLED
+// Create battery timer.
+        m_bonding_reply_timer_is_running = false;
+        err_code = app_timer_create(&m_bonding_reply_timer_id,
+                                    APP_TIMER_MODE_SINGLE_SHOT,
+                                    bonding_reply_timeout_handler);
+        APP_ERROR_CHECK(err_code);
+#endif
 }
 
 
@@ -890,6 +917,7 @@ static void timers_start(void)
 
         err_code = app_timer_start(m_battery_timer_id, BATTERY_LEVEL_MEAS_INTERVAL, NULL);
         APP_ERROR_CHECK(err_code);
+
 }
 
 
@@ -1412,6 +1440,13 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context)
 
                 break; // BLE_GAP_EVT_DISCONNECTED
 
+        case BLE_GAP_EVT_SEC_PARAMS_REQUEST:
+        {
+                NRF_LOG_DEBUG("Security Request from Host");
+                NRF_LOG_DEBUG("Press Button 2 -- Accept Bonding! or Button 3 -- Reject");
+        }
+        break;
+
         case BLE_GAP_EVT_PHY_UPDATE_REQUEST:
         {
                 NRF_LOG_DEBUG("PHY update request.");
@@ -1535,30 +1570,15 @@ static void bsp_event_handler(bsp_event_t event)
                         }
                 }
                 break;
-
-        case BSP_EVENT_KEY_1:
-                if (m_allow_bonding)
-                {
-                        m_allow_bonding = false;
-                        NRF_LOG_DEBUG("Force to reject bonding");
-                }
-                else
-                {
-                        m_allow_bonding = true;
-                        NRF_LOG_DEBUG("Allow bonding");
-                }
-
-                break;
+#if PM_SECURITY_USER_SELECTION_ENABLED
         case BSP_EVENT_KEY_2:
         {
                 NRF_LOG_DEBUG("Press Key 2 to accept bonding!");
+
                 if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
                 {
-                    //static uint16_t m_conn_handle  = BLE_CONN_HANDLE_INVALID;           /**< Handle of the current connection. */
-                      m_sec_params_reply_context.params_reply_called = true;
-                      err_code = pm_conn_sec_params_reply(m_conn_handle,
-                                                          &m_sec_param,
-                                                          &m_sec_params_reply_context);
+                        pm_conn_sec_params_pending_reply(m_conn_handle, &m_sec_param);
+                        bonding_reply_timer_stop();
                 }
         }
         break;
@@ -1568,107 +1588,18 @@ static void bsp_event_handler(bsp_event_t event)
                 NRF_LOG_DEBUG("Press Key 3 to reject bonding!");
                 if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
                 {
-                    //static uint16_t m_conn_handle  = BLE_CONN_HANDLE_INVALID;           /**< Handle of the current connection. */
-                      m_sec_params_reply_context.params_reply_called = true;
-                      err_code = pm_conn_sec_params_reply(m_conn_handle,
-                                                          NULL,
-                                                          &m_sec_params_reply_context);
+                        err_code = sd_ble_gap_sec_params_reply(m_conn_handle, BLE_GAP_SEC_STATUS_PAIRING_NOT_SUPP, NULL, &m_sec_params_reply_context);
+                        APP_ERROR_CHECK(err_code);
+                        bonding_reply_timer_stop();
                 }
         }
         break;
+#endif
+
         default:
                 break;
         }
 }
-
-// /**@brief Function for handling events from the button handler module.
-//  *
-//  * @param[in] pin_no        The pin that the event applies to.
-//  * @param[in] button_action The button action (press/release).
-//  */
-// static void button_event_handler(uint8_t pin_no, uint8_t button_action)
-// {
-//         ret_code_t err_code;
-//
-//         switch (pin_no)
-//         {
-//         case ERASE_BONDING_BUTTON:
-//                 if (button_action == APP_BUTTON_PUSH)
-//                 {
-//                         err_code = sd_ble_gap_disconnect(m_conn_handle,
-//                                                          BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
-//                         if (err_code != NRF_ERROR_INVALID_STATE)
-//                         {
-//                                 APP_ERROR_CHECK(err_code);
-//                         }
-//                         delete_bonds();
-//                         NRF_LOG_DEBUG("Erase all the bonding information!");
-//                 }
-//                 break;
-//
-//         case KEYBOARD_TEST_BUTTON:
-//                 if (button_action == APP_BUTTON_PUSH)
-//                 {
-//                         static uint8_t * p_key = m_sample_key_press_scan_str;
-//                         static uint8_t size  = 0;
-//                         NRF_LOG_DEBUG("Press the keyboard testing!");
-//                         if (m_conn_handle != BLE_CONN_HANDLE_INVALID)
-//                         {
-//                                 keys_send(1, p_key);
-//                                 p_key++;
-//                                 size++;
-//                                 if (size == MAX_KEYS_IN_ONE_REPORT)
-//                                 {
-//                                         p_key = m_sample_key_press_scan_str;
-//                                         size  = 0;
-//                                 }
-//                         }
-//                 }
-//                 break;
-//
-//         case ALLOW_BONDING_BUTTON:
-//                 if (button_action == APP_BUTTON_PUSH)
-//                 {
-//                         m_allow_bonding = true;
-//                         NRF_LOG_DEBUG("Allow bonding");
-//                 }
-//                 break;
-//         case REJECT_BONDING_BUTTON:
-//                 if (button_action == APP_BUTTON_PUSH)
-//                 {
-//                         m_allow_bonding = false;
-//                         NRF_LOG_DEBUG("Force to reject bonding");
-//                 }
-//                 break;
-//
-//         default:
-//                 APP_ERROR_HANDLER(pin_no);
-//                 break;
-//         }
-// }
-
-// /**@brief Function for initializing the button handler module.
-//  */
-// static void buttons_init(void)
-// {
-//         ret_code_t err_code;
-//
-//         //The array must be static because a pointer to it will be saved in the button handler module.
-//         static app_button_cfg_t buttons[] =
-//         {
-//                 {ERASE_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler},
-//                 {KEYBOARD_TEST_BUTTON, false, BUTTON_PULL, button_event_handler},
-//                 {ALLOW_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler},
-//                 {REJECT_BONDING_BUTTON, false, BUTTON_PULL, button_event_handler}
-//         };
-//
-//         err_code = app_button_init(buttons, ARRAY_SIZE(buttons),
-//                                    BUTTON_DETECTION_DELAY);
-//         APP_ERROR_CHECK(err_code);
-//
-//         err_code = app_button_enable();
-//         APP_ERROR_CHECK(err_code);
-// }
 
 /**@brief Function for the Peer Manager initialization.
  */
@@ -1680,28 +1611,29 @@ static void peer_manager_init(void)
         err_code = pm_init();
         APP_ERROR_CHECK(err_code);
 
-        memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
-
-        // // Security parameters to be used for all security procedures.
-        // sec_param.bond           = SEC_PARAM_BOND;
-        // sec_param.mitm           = SEC_PARAM_MITM;
-        // sec_param.lesc           = SEC_PARAM_LESC;
-        // sec_param.keypress       = SEC_PARAM_KEYPRESS;
-        // sec_param.io_caps        = SEC_PARAM_IO_CAPABILITIES;
-        // sec_param.oob            = SEC_PARAM_OOB;
-        // sec_param.min_key_size   = SEC_PARAM_MIN_KEY_SIZE;
-        // sec_param.max_key_size   = SEC_PARAM_MAX_KEY_SIZE;
-        // sec_param.kdist_own.enc  = 1;
-        // sec_param.kdist_own.id   = 1;
-        // sec_param.kdist_peer.enc = 1;
-        // sec_param.kdist_peer.id  = 1;
-        //
-        // err_code = pm_sec_params_set(&sec_param);
-        // APP_ERROR_CHECK(err_code);
-
-
+#if PM_SECURITY_USER_SELECTION_ENABLED
         err_code = local_pm_secure_mode_set();
         APP_ERROR_CHECK(err_code);
+
+#else
+        memset(&sec_param, 0, sizeof(ble_gap_sec_params_t));
+        // // Security parameters to be used for all security procedures.
+        sec_param.bond           = SEC_PARAM_BOND;
+        sec_param.mitm           = SEC_PARAM_MITM;
+        sec_param.lesc           = SEC_PARAM_LESC;
+        sec_param.keypress       = SEC_PARAM_KEYPRESS;
+        sec_param.io_caps        = SEC_PARAM_IO_CAPABILITIES;
+        sec_param.oob            = SEC_PARAM_OOB;
+        sec_param.min_key_size   = SEC_PARAM_MIN_KEY_SIZE;
+        sec_param.max_key_size   = SEC_PARAM_MAX_KEY_SIZE;
+        sec_param.kdist_own.enc  = 1;
+        sec_param.kdist_own.id   = 1;
+        sec_param.kdist_peer.enc = 1;
+        sec_param.kdist_peer.id  = 1;
+
+        err_code = pm_sec_params_set(&sec_param);
+        APP_ERROR_CHECK(err_code);
+#endif
 
 
         err_code = pm_register(pm_evt_handler);
@@ -1812,7 +1744,7 @@ int main(void)
         log_init();
         timers_init();
         buttons_leds_init(&erase_bonds);
-        //buttons_init();
+
         power_management_init();
         ble_stack_init();
         scheduler_init();
@@ -1827,14 +1759,6 @@ int main(void)
 
         // Start execution.
         NRF_LOG_INFO("Device Name %s, HID Keyboard example started.", (char *)DEVICE_NAME);
-        if (m_allow_bonding)
-        {
-                NRF_LOG_INFO("Allow Bonding!");
-        }
-        else
-        {
-                NRF_LOG_INFO("Reject Bonding!");
-        }
 
         timers_start();
         advertising_start(erase_bonds);

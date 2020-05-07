@@ -252,7 +252,12 @@ static void params_req_send(uint16_t                     conn_handle,
                             ble_gap_sec_params_t const * p_peer_params,
                             sec_params_reply_context_t * p_context)
 {
+        //jimmy
+#if PM_SECURITY_USER_SELECTION_ENABLED
+        pm_evt_t evt = new_evt(PM_EVT_CONN_SEC_PARAMS_REQ_PENDING, conn_handle);
+#else
     pm_evt_t evt = new_evt(PM_EVT_CONN_SEC_PARAMS_REQ, conn_handle);
+#endif
     evt.params.conn_sec_params_req.p_peer_params = p_peer_params;
     evt.params.conn_sec_params_req.p_context     = p_context;
 

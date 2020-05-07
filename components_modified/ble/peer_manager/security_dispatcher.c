@@ -473,8 +473,10 @@ static void sec_params_request_process(ble_gap_evt_t const * p_gap_evt)
                                                ? PM_CONN_SEC_PROCEDURE_BONDING
                                                : PM_CONN_SEC_PROCEDURE_PAIRING);
     }
-
-    send_params_req(p_gap_evt->conn_handle, &p_gap_evt->params.sec_params_request.peer_params);
+#if PM_SECURITY_USER_SELECTION_ENABLED
+#else
+        send_params_req(p_gap_evt->conn_handle, &p_gap_evt->params.sec_params_request.peer_params);
+#endif
     return;
 }
 
@@ -783,6 +785,13 @@ static ret_code_t sec_keyset_fill(uint16_t                 conn_handle,
     return err_code;
 }
 
+#if PM_SECURITY_USER_SELECTION_ENABLED
+void send_params_req_users_reply(uint16_t conn_handle, ble_gap_sec_params_t const * p_peer_params)
+{
+        NRF_LOG_DEBUG("send_params_req_users_reply");
+        send_params_req(conn_handle, p_peer_params);
+}
+#endif
 
 ret_code_t smd_params_reply(uint16_t                 conn_handle,
                             ble_gap_sec_params_t   * p_sec_params,

@@ -76,12 +76,12 @@ extern "C" {
  */
 typedef enum
 {
-        PM_PEER_ID_LIST_ALL_ID,                                      /**< Add all peers. */
-        PM_PEER_ID_LIST_SKIP_NO_ID_ADDR = BIT_0,                     /**< Add only peers with an ID address (static address). */
-        PM_PEER_ID_LIST_SKIP_NO_IRK     = BIT_1,                     /**< Add only peers with a valid IRK. This implies @ref PM_PEER_ID_LIST_SKIP_NO_ID_ADDR, since all peers with IRKs have ID addresses. */
-        PM_PEER_ID_LIST_SKIP_NO_CAR     = BIT_2,                     /**< Add only peers with Central Address Resolution characteristic set to 0. */
-        PM_PEER_ID_LIST_SKIP_ALL        = PM_PEER_ID_LIST_SKIP_NO_IRK |/**< All above filters applied. */
-                                          PM_PEER_ID_LIST_SKIP_NO_CAR
+    PM_PEER_ID_LIST_ALL_ID,                                          /**< Add all peers. */
+    PM_PEER_ID_LIST_SKIP_NO_ID_ADDR = BIT_0,                         /**< Add only peers with an ID address (static address). */
+    PM_PEER_ID_LIST_SKIP_NO_IRK     = BIT_1,                         /**< Add only peers with a valid IRK. This implies @ref PM_PEER_ID_LIST_SKIP_NO_ID_ADDR, since all peers with IRKs have ID addresses. */
+    PM_PEER_ID_LIST_SKIP_NO_CAR     = BIT_2,                         /**< Add only peers with Central Address Resolution characteristic set to 0. */
+    PM_PEER_ID_LIST_SKIP_ALL        = PM_PEER_ID_LIST_SKIP_NO_IRK |  /**< All above filters applied. */
+                                      PM_PEER_ID_LIST_SKIP_NO_CAR
 } pm_peer_id_list_skip_t;
 
 /**@brief Function for initializing the Peer Manager.
@@ -184,8 +184,6 @@ ret_code_t pm_conn_secure(uint16_t conn_handle, bool force_repairing);
 void pm_conn_sec_config_reply(uint16_t conn_handle, pm_conn_sec_config_t * p_conn_sec_config);
 
 
-
-
 /**@brief Function for providing security parameters for a link.
  *
  * @details This function is optional, and must be called in reply to a @ref
@@ -201,15 +199,10 @@ void pm_conn_sec_config_reply(uint16_t conn_handle, pm_conn_sec_config_t * p_con
  * @retval NRF_ERROR_INVALID_PARAM  Value of p_sec_params was invalid.
  * @retval NRF_ERROR_INVALID_STATE  This module is not initialized.
  */
-ret_code_t pm_conn_sec_params_reply(uint16_t conn_handle,
+ret_code_t pm_conn_sec_params_reply(uint16_t               conn_handle,
                                     ble_gap_sec_params_t * p_sec_params,
-                                    void const * p_context);
+                                    void           const * p_context);
 
-
-#if PM_SECURITY_USER_SELECTION_ENABLED
-void pm_conn_sec_params_pending_reply(uint16_t conn_handle,
-                                      ble_gap_sec_params_t * p_sec_params);
-#endif
 
 /**@brief Function for manually informing that the local database has changed.
  *
@@ -296,7 +289,7 @@ ret_code_t pm_lesc_public_key_set(ble_gap_lesc_p256_pk_t * p_public_key);
  * @retval NRF_ERROR_INVALID_STATE          If the Peer Manager is not initialized.
  */
 ret_code_t pm_whitelist_set(pm_peer_id_t const * p_peers,
-                            uint32_t peer_cnt);
+                            uint32_t             peer_cnt);
 
 
 /**@brief Function for retrieving the previously set whitelist.
@@ -359,7 +352,7 @@ ret_code_t pm_whitelist_get(ble_gap_addr_t * p_addrs,
  *                                                  device identities, e.g. S130 v2.0.
  */
 ret_code_t pm_device_identities_list_set(pm_peer_id_t const * p_peers,
-                                         uint32_t peer_cnt);
+                                         uint32_t             peer_cnt);
 
 
 /**@brief Function for setting the local <em>Bluetooth</em> identity address.
@@ -507,7 +500,7 @@ ret_code_t pm_peer_id_get(uint16_t conn_handle, pm_peer_id_t * p_peer_id);
  */
 ret_code_t pm_peer_id_list(pm_peer_id_t         * p_peer_list,
                            uint32_t       * const p_list_size,
-                           pm_peer_id_t first_peer_id,
+                           pm_peer_id_t           first_peer_id,
                            pm_peer_id_list_skip_t skip_id);
 
 
@@ -581,19 +574,19 @@ uint32_t pm_peer_count(void);
  *                                  when storing.
  * @retval NRF_ERROR_INVALID_STATE  If the Peer Manager is not initialized.
  */
-ret_code_t pm_peer_data_load(pm_peer_id_t peer_id,
+ret_code_t pm_peer_data_load(pm_peer_id_t      peer_id,
                              pm_peer_data_id_t data_id,
                              void            * p_data,
                              uint32_t        * p_len);
 
 /**@brief Function for reading a peer's bonding data (@ref PM_PEER_DATA_ID_BONDING).
  * @details See @ref pm_peer_data_load for parameters and return values. */
-ret_code_t pm_peer_data_bonding_load(pm_peer_id_t peer_id,
+ret_code_t pm_peer_data_bonding_load(pm_peer_id_t             peer_id,
                                      pm_peer_data_bonding_t * p_data);
 
 /**@brief Function for reading a peer's remote DB values. (@ref PM_PEER_DATA_ID_GATT_REMOTE).
  * @details See @ref pm_peer_data_load for parameters and return values. */
-ret_code_t pm_peer_data_remote_db_load(pm_peer_id_t peer_id,
+ret_code_t pm_peer_data_remote_db_load(pm_peer_id_t        peer_id,
                                        ble_gatt_db_srv_t * p_data,
                                        uint32_t          * p_len);
 
@@ -640,30 +633,30 @@ ret_code_t pm_peer_data_app_data_load(pm_peer_id_t peer_id,
  *                                  so duplicate entries are avoided.
  * @retval NRF_ERROR_INVALID_STATE  If the Peer Manager is not initialized.
  */
-ret_code_t pm_peer_data_store(pm_peer_id_t peer_id,
-                              pm_peer_data_id_t data_id,
-                              void const * p_data,
-                              uint32_t len,
+ret_code_t pm_peer_data_store(pm_peer_id_t       peer_id,
+                              pm_peer_data_id_t  data_id,
+                              void       const * p_data,
+                              uint32_t           len,
                               pm_store_token_t * p_token);
 
 /**@brief Function for setting or updating a peer's bonding data (@ref PM_PEER_DATA_ID_BONDING).
  * @details See @ref pm_peer_data_store for parameters and return values. */
-ret_code_t pm_peer_data_bonding_store(pm_peer_id_t peer_id,
+ret_code_t pm_peer_data_bonding_store(pm_peer_id_t                   peer_id,
                                       pm_peer_data_bonding_t const * p_data,
                                       pm_store_token_t             * p_token);
 
 /**@brief Function for setting or updating a peer's remote DB values. (@ref PM_PEER_DATA_ID_GATT_REMOTE).
  * @details See @ref pm_peer_data_store for parameters and return values. */
-ret_code_t pm_peer_data_remote_db_store(pm_peer_id_t peer_id,
+ret_code_t pm_peer_data_remote_db_store(pm_peer_id_t              peer_id,
                                         ble_gatt_db_srv_t const * p_data,
-                                        uint32_t len,
+                                        uint32_t                  len,
                                         pm_store_token_t        * p_token);
 
 /**@brief Function for setting or updating a peer's application data. (@ref PM_PEER_DATA_ID_APPLICATION).
  * @details See @ref pm_peer_data_store for parameters and return values. */
-ret_code_t pm_peer_data_app_data_store(pm_peer_id_t peer_id,
-                                       void const * p_data,
-                                       uint32_t len,
+ret_code_t pm_peer_data_app_data_store(pm_peer_id_t       peer_id,
+                                       void       const * p_data,
+                                       uint32_t           len,
                                        pm_store_token_t * p_token);
 /** @}*/
 
